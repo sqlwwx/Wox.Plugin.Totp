@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <!-- 🔐 的矢量化：深色圆角底 + 金色挂锁 + 钥匙孔 -->
+  <rect width="128" height="128" rx="28" fill="#1e293b"/>
+  <path d="M64 20c-15 0-26 11-26 26v14h13v-14c0-8 5-13 13-13s13 5 13 13v14h13v-14c0-15-11-26-26-26z" fill="#fbbf24"/>
+  <rect x="33" y="58" width="62" height="50" rx="11" fill="#fbbf24"/>
+  <circle cx="64" cy="76" r="7.5" fill="#1e293b"/>
+  <rect x="60" y="80" width="8" height="15" rx="4" fill="#1e293b"/>
+</svg>

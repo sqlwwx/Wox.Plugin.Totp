@@ -1,5 +1,5 @@
-# 打 tag → 校验 tag 与 plugin.json Version 一致 → 构建 → 上传 wox-totp.wox 到 GitHub Release
-# 资产名固定 wox-totp.wox，商店 DownloadUrl 用 releases/latest/download/wox-totp.wox（不带版本号）
+# 打 tag → 校验 tag 与 plugin.json Version 一致 → 构建 → 上传 Wox.Plugin.Totp.wox 到 GitHub Release
+# 资产名固定 Wox.Plugin.Totp.wox，商店 DownloadUrl 用 releases/latest/download/Wox.Plugin.Totp.wox（不带版本号）
 # Wox 商店 CI 定期抓 Website 仓库 /releases/latest 的版本号自动更新 store-plugin.json，
 # 所以 tag（即 release 版本）必须始终等于 plugin.json 的 Version
 name: Release
@@ -37,4 +37,4 @@ jobs:
       - name: Create release
         uses: softprops/action-gh-release@v2
         with:
-          files: wox-totp.wox
+          files: Wox.Plugin.Totp.wox

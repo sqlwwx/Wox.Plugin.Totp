@@ -1,7 +1,7 @@
 // bun 打包：src/index.mjs → dist/index.js（单文件 CJS，Entry 见根目录 plugin.json）
 // 目录插件形式：make dev 注册后，Wox watch dist/，产物变化自动热重载（无需手动部署）
 // --watch：用 fs.watch 监视 src/，变化后自动重建
-import { copyFileSync, watch } from "fs"
+import { copyFileSync, mkdirSync, watch } from "fs"
 
 const options = {
   entrypoints: ["src/index.mjs"],
@@ -20,6 +20,9 @@ const build = async () => {
   try {
     await Bun.build(options)
     copyFileSync("plugin.json", "dist/plugin.json") // Wox 加载/热重载读 dist/plugin.json（官方模板同款结构）
+    // Icon 是 relative:images/icon.svg，dist 即插件目录，图标须随构建拷入（SVG 全链路矢量渲染，商店 IconUrl 同源）
+    mkdirSync("dist/images", { recursive: true })
+    copyFileSync("images/icon.svg", "dist/images/icon.svg")
     console.log(`[${new Date().toLocaleTimeString()}] build → dist/index.js`)
   } catch (e) {
     // 保存瞬间的语法错误很常见：打印错误但绝不能让进程退出，否则 watch 就死了
