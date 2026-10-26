@@ -2,7 +2,7 @@
   "Id": "ef529aa0-1288-4a8c-b061-b98389491b4e",
   "Name": "i18n:plugin_name",
   "Author": "wuweixing",
-  "Version": "0.1.0",
+  "Version": "0.2.0",
   "MinWoxVersion": "2.4.2",
   "Runtime": "nodejs",
   "Description": "i18n:plugin_description",

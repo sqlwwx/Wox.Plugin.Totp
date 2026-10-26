@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [0.2.0](https://github.com/sqlwwx/wox-totp/compare/v0.1.0...v0.2.0) (2026-10-26)
+
+
+### Features
+
+* 支持备份导出/导入，.wotpe 主密码加密，导入扫描选择文件；Notify 类 action 加 preventHide 修复提示被吞 ([9322cca](https://github.com/sqlwwx/wox-totp/commit/9322cca737cfa9af5650040bf0c463707c875c55))
+
 ## [0.1.0](https://github.com/sqlwwx/wox-totp/compare/v0.0.6...v0.1.0) (2026-10-26)
 
 
