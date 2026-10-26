@@ -6,7 +6,9 @@
 
 import { t, tErr } from "./i18n.mjs"
 import { getApi } from "./context.mjs"
-import { unlock, changePassword, updateAccounts, needsSetup } from "./store.mjs"
+import { writeFile, readFile } from "fs/promises"
+import os from "os"
+import { unlock, changePassword, updateAccounts, needsSetup, exportVault, importVault } from "./store.mjs"
 import { typeText } from "./typetext.mjs"
 import { totp } from "./totp.mjs"
 import { ICON_EXEC, ICON_DEL, ICON_COPY, result, single, act, display, detail, rowId, confirmKey } from "./ui.mjs"
@@ -126,6 +128,81 @@ export function passwordAction() {
 }
 
 /**
+ * 导出备份：整库密文（主密码 AES-256-GCM 加密）写成文件到 ~/Downloads。
+ * 密文文件可存任意位置/上云，只有主密码能解；仅解锁态展示（needsSetup 已在上游拦截）。
+ * @returns {Object} action
+ */
+export function exportVaultAction() {
+  return act(t("export_row"), ICON_COPY, async (actCtx) => {
+    const data = exportVault()
+    if (!data) return
+    const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19)
+    const path = `${os.homedir()}/Downloads/totp-backup-${ts}.wotpe`
+    await writeFile(path, data)
+    await getApi().Notify(actCtx, t("exported", path))
+  }, { isDefault: true, id: "totp:row:export", preventHide: true })
+}
+
+/**
+ * 导入备份：表单输入备份的主密码，解密合并进当前库。
+ * 备份主密码可与当前库主密码不同。
+ * path 非空时直接用（扫描列表选中，路径在闭包里）；为空时表单带路径输入框（手动兜底）。
+ * @param {string|null} path - 备份 .wotpe 文件绝对路径
+ * @returns {Object} Type=form 的 action
+ */
+export function importVaultForm(path) {
+  const fields = []
+  if (!path) {
+    fields.push({
+      Type: "textbox",
+      Value: {
+        Key: "path",
+        Label: t("import_file_label"),
+        DefaultValue: "",
+        MaxLines: 1,
+      },
+      DisabledInPlatforms: [],
+      IsPlatformSpecific: false,
+    })
+  }
+  fields.push({
+    Type: "password",
+    Value: {
+      Key: "password",
+      Label: t("import_pwd_label"),
+      DefaultValue: "",
+      MaxLines: 1,
+    },
+    DisabledInPlatforms: [],
+    IsPlatformSpecific: false,
+  })
+  return {
+    Id: path ? `totp:import:${path}` : "totp:import",
+    Type: "form",
+    Name: t("subcmd_import"),
+    Icon: ICON_EXEC,
+    IsDefault: true,
+    PreventHideAfterAction: true,
+    Form: fields,
+    OnSubmit: async (formCtx, actionContext) => {
+      try {
+        const p = path || (actionContext.Values.path || "").trim()
+        const raw = await readFile(p)
+        const { added, replaced } = await importVault(raw, (actionContext.Values.password || "").trim())
+        if (added + replaced === 0) {
+          await getApi().Notify(formCtx, t("import_empty"))
+          return
+        }
+        await getApi().Notify(formCtx, t("imported", added, replaced))
+        await getApi().RefreshQuery(formCtx, { PreserveSelectedIndex: true })
+      } catch (e) {
+        await getApi().Notify(formCtx, `TOTP: ${tErr(e)}`)
+      }
+    },
+  }
+}
+
+/**
  * 账号行的动作集合：复制当前码 / 复制下一周期码 / 设置别名（表单）/ 删除（二次确认）。
  * @param {{issuer?: string, name: string, alias?: string, secret: string, period?: number, digits?: number, algo?: string}} a - 账户
  * @param {string} code - 当前验证码
@@ -152,15 +229,17 @@ export function buildActions(a, code) {
   return [
     // 回车默认直接输入到活动窗口（不碰剪贴板），复制保留为普通 action
     act(t("type_code", code), ICON_EXEC, typeCode, { isDefault: true, id: `${rid}:type` }),
+    // preventHide：窗口在 action 返回后立即被 core 隐藏，Notify 转系统通知通道会静默（无通知权限时），
+    // 只靠 Notify 反馈的 action 必须保持窗口可见才能看到应用内提示
     act(t("copy_code", code), ICON_COPY, async (actCtx) => {
       await api.Copy(actCtx, { type: "text", text: code })
       await api.Notify(actCtx, t("copied", display(a)))
-    }, { id: `${rid}:copy` }),
+    }, { id: `${rid}:copy`, preventHide: true }),
     act(t("copy_next"), ICON_EXEC, async (actCtx) => {
       const next = totp(a.secret, 1, a.period, a.digits, a.algo)
       await api.Copy(actCtx, { type: "text", text: next })
       await api.Notify(actCtx, t("copied_next", next))
-    }, { id: `${rid}:copy_next` }),
+    }, { id: `${rid}:copy_next`, preventHide: true }),
     {
       // 别名用表单收集：文本框 + 提交保存；留空提交即清除别名
       // Type 必须显式为 "form"；Id 必须稳定，见 ui.mjs act() 的 JSDoc

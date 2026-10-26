@@ -227,6 +227,42 @@ export async function changePassword(newPwd) {
   lastAuthAt = Date.now()
 }
 
+/** 导出备份：整库密文原始字节（即 WOTPE 二进制格式），未设置主密码返回 null */
+export function exportVault() {
+  return encBlob
+}
+
+/**
+ * 导入备份：解密备份密文原始字节并合并进当前库（不依赖当前解锁状态，密码只用于解备份）。
+ * 合并语义与 add 一致：issuer+name 相同覆盖，其余追加。
+ * @param {Buffer} raw - 备份密文原始字节（即 exportVault 的输出）
+ * @param {string|number} password - 备份的主密码（可与当前库主密码不同）
+ * @returns {Promise<{added: number, replaced: number}>}
+ * @throws {Error} 备份格式非法 / 主密码错误 / 持久化失败
+ */
+export async function importVault(raw, password) {
+  const parsed = parseEncBlob(raw)
+  const key = deriveKey(password, parsed.salt)
+  let accounts
+  try {
+    const decipher = crypto.createDecipheriv("aes-256-gcm", key, parsed.iv)
+    decipher.setAuthTag(parsed.tag)
+    // GCM 认证通过才到这行，明文可信；JSON.parse 失败也按密码错误处理（tag 已过 = 只可能密码错）
+    accounts = JSON.parse(Buffer.concat([decipher.update(parsed.data), decipher.final()]).toString("utf8")).accounts || []
+  } catch {
+    throw err("err_wrong_password")
+  }
+  let added = 0
+  let replaced = 0
+  await updateAccounts((accs) => {
+    for (const a of accounts) {
+      const i = accs.findIndex((x) => x.name === a.name && (x.issuer || "") === (a.issuer || ""))
+      if (i >= 0) { accs[i] = a; replaced++ } else { accs.push(a); added++ }
+    }
+  })
+  return { added, replaced }
+}
+
 /** 硬重置：清空 setting 回到未设置状态（忘记密码的兜底，数据不可恢复） */
 export async function resetStorage() {
   encBlob = null

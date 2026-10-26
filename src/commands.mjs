@@ -5,11 +5,14 @@
  */
 
 import { getApi } from "./context.mjs"
+import { readdir, stat } from "fs/promises"
+import os from "os"
+import path from "path"
 import { t, tErr } from "./i18n.mjs"
 import { totp, parseUri, remainingSeconds, matchAccount } from "./totp.mjs"
 import { readAccounts, updateAccounts, resetStorage, lock, isLocked, needsSetup, maybeExpire } from "./store.mjs"
 import { ICON_EXEC, ICON_DEL, ICON_LOCK, result, single, act, display, detail, rowId, confirmKey, findByConfirmKey } from "./ui.mjs"
-import { lockedResult, passwordAction, buildActions } from "./views.mjs"
+import { lockedResult, passwordAction, buildActions, exportVaultAction, importVaultForm } from "./views.mjs"
 import { globalState } from "./live.mjs"
 
 /**
@@ -26,7 +29,7 @@ export async function syncQueryCommands(ctx) {
   if (typeof api.RegisterQueryCommands !== "function") return
   try {
     const commands = unlocked
-      ? ["add", "password", "lock"].map((cmd) => ({ Command: cmd, Description: t(`subcmd_${cmd}`) }))
+      ? ["add", "password", "import", "lock"].map((cmd) => ({ Command: cmd, Description: t(`subcmd_${cmd}`) }))
       : []
     await api.RegisterQueryCommands(ctx, commands)
     globalState.commandsSyncedUnlocked = unlocked
@@ -123,6 +126,60 @@ export async function qAdd(parts) {
   }
 }
 
+// 常用备份目录（顶层扫一遍，不递归）：有 .wotpe 就列出来让用户选，扫不到再手动输路径
+const BACKUP_DIRS = ["Downloads", "Desktop", ""]
+
+/**
+ * 扫描常见目录下的备份文件（.wotpe），按修改时间倒序。
+ * 目录不存在/无权限时跳过（合并各目录结果）。
+ * @returns {Promise<Array<{path: string, name: string, dir: string, mtime: string}>>}
+ */
+async function scanBackups() {
+  const home = os.homedir()
+  const found = []
+  for (const dir of BACKUP_DIRS) {
+    const abs = path.join(home, dir)
+    let entries
+    try {
+      entries = await readdir(abs, { withFileTypes: true })
+    } catch {
+      continue
+    }
+    for (const e of entries) {
+      if (!e.isFile() || !e.name.endsWith(".wotpe")) continue
+      const p = path.join(abs, e.name)
+      try {
+        const st = await stat(p)
+        found.push({ path: p, name: e.name, dir, mtime: st.mtime.toLocaleString("sv-SE") })
+      } catch {}
+    }
+  }
+  return found.sort((a, b) => (a.mtime < b.mtime ? 1 : -1)).slice(0, 20)
+}
+
+/**
+ * 导入备份：列出扫描到的 .wotpe 文件，选中行回车弹密码表单（路径在闭包里）；
+ * 扫不到时只显示手动输路径的兜底行。parts[1] 可按文件名过滤。
+ * @param {string[]} parts - 查询词分段，parts[1] 为文件名关键字
+ * @returns {Promise<{Results: Array<Object>}>}
+ */
+export async function qImport(parts) {
+  const kw = (parts[1] || "").toLowerCase()
+  const files = await scanBackups()
+  const matched = files.filter((f) => !kw || f.name.toLowerCase().includes(kw))
+  const manualRow = result(t("import_manual"), t("import_manual_detail"), [
+    importVaultForm(null),
+  ], null, "totp:import:manual", 1)
+  if (matched.length === 0) {
+    return single(t("import_scan_none"), t("import_manual_detail"), [importVaultForm(null)])
+  }
+  return {
+    Results: matched.map((f, i) =>
+      result(f.name, `${f.dir || "~"} · ${f.mtime}`, [importVaultForm(f.path)], null, `totp:import:${f.path}`, 1000 - i)
+    ).concat([manualRow]),
+  }
+}
+
 /**
  * 列出账户：按添加序渲染账号行（含验证码/剩余秒数/动作）。
  * @param {string} search - 搜索词；空串显示全部，否则按 issuer/name/alias 匹配
@@ -196,6 +253,7 @@ export async function dispatchQuery(ctx, query) {
 
   if (cmd === "confirm") return await qConfirm(parts[1])
   if (cmd === "add") return await qAdd(parts)
+  if (cmd === "import") return await qImport(parts)
 
   const accounts = readAccounts()
   const list = await qList(search)
@@ -218,11 +276,19 @@ export async function dispatchQuery(ctx, query) {
         result(t("subcmd_password"), t("subcmd_password_detail"), [
           passwordAction(),
         ], null, "totp:row:password-item", 700),
+        result(t("subcmd_import"), t("subcmd_import_detail"), [
+          act(t("subcmd_import"), ICON_EXEC, async (actCtx) => {
+            await api.ChangeQuery(actCtx, { QueryType: "input", QueryText: "totp import " })
+          }, { isDefault: true, id: "totp:row:import", preventHide: true }),
+        ], null, "totp:row:import-item", 650),
+        result(t("export_row"), t("export_row_detail"), [
+          exportVaultAction(),
+        ], null, "totp:row:export-item", 600),
         result(t("subcmd_reset"), t("subcmd_reset_detail"), [
           act(t("subcmd_reset"), ICON_DEL, async (actCtx) => {
             await api.ChangeQuery(actCtx, { QueryType: "input", QueryText: "totp reset" })
           }, { isDefault: true, id: "totp:row:reset", preventHide: true }),
-        ], null, "totp:row:reset-item", 600),
+        ], null, "totp:row:reset-item", 500),
       ]
     : []
   // build 时间行仅开发构建（--watch 注入 __BUILD_TIME__）时显示，用于确认热重载生效

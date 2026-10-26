@@ -2,7 +2,8 @@
 import { describe, test, expect, beforeEach } from "bun:test"
 import {
   initStore, readAccounts, updateAccounts, unlock, lock, resetStorage, onCloudSyncChanged,
-  needsSetup, isUnlocked, isLocked, maybeExpire, changePassword, AUTH_TTL_MS, _test,
+  needsSetup, isUnlocked, isLocked, maybeExpire, changePassword, exportVault, importVault,
+  AUTH_TTL_MS, _test,
 } from "../src/store.mjs"
 
 // mock Wox setting 存储：内存 KV，模拟 GetSetting/SetSetting RPC（含持久化语义：
@@ -142,6 +143,41 @@ describe("setting 载体持久化", () => {
     // 重载后仍是未设置（setting 里已无密文）
     await initStore(api, {})
     expect(needsSetup()).toBe(true)
+  })
+})
+
+describe("导入导出", () => {
+  test("导出密文即整库备份：WOTPE 格式，原密码可解回，错误密码拒绝", async () => {
+    await unlock("secret123")
+    await updateAccounts((a) => a.push({ name: "imp", issuer: "GI", secret: "S" }))
+    const raw = exportVault()
+    expect(raw.subarray(0, 5).toString()).toBe("WOTPE")
+    // 模拟换机/新库（不同主密码）导入
+    await resetStorage()
+    await unlock("other456")
+    await expect(importVault(raw, "wrong-pwd")).rejects.toThrow("err_wrong_password")
+    expect(readAccounts()).toHaveLength(0) // 导入失败不污染当前库
+    const r = await importVault(raw, "secret123")
+    expect(r).toEqual({ added: 1, replaced: 0 })
+    expect(readAccounts()[0].name).toBe("imp")
+  })
+
+  test("重复导入：issuer+name 相同覆盖不重复（与 add 语义一致）", async () => {
+    await unlock("secret123")
+    await updateAccounts((a) => a.push({ name: "imp", issuer: "GI", secret: "S" }))
+    const raw = exportVault()
+    const r = await importVault(raw, "secret123")
+    expect(r).toEqual({ added: 0, replaced: 1 })
+    expect(readAccounts()).toHaveLength(1)
+  })
+
+  test("备份内容非法报 err_corrupt", async () => {
+    await unlock("secret123")
+    await expect(importVault(Buffer.from("garbage data"), "secret123")).rejects.toThrow("err_corrupt")
+  })
+
+  test("未设置主密码时导出返回 null", async () => {
+    expect(exportVault()).toBeNull()
   })
 })
 
