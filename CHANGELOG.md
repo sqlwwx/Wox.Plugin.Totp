@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [0.1.0](https://github.com/sqlwwx/wox-totp/compare/v0.0.6...v0.1.0) (2026-10-26)
+
+
+### Features
+
+* 回车直接输入验证码到活动窗口，不经过剪贴板（失败兜底复制） ([24655e5](https://github.com/sqlwwx/wox-totp/commit/24655e5dd16c14c66baf0bc7efe6424b1cec380d))
+
 ### [0.0.6](https://github.com/sqlwwx/wox-totp/compare/v0.0.5...v0.0.6) (2026-10-08)
 
 
