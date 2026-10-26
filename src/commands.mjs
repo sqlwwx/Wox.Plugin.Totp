@@ -153,7 +153,7 @@ export async function qList(search) {
     }
     const remain = remainingSeconds(a.period)
     globalState.lastRendered.set(rowId(a), { code, remain })
-    const sub = [detail(a), t("remain_copy", remain)].filter(Boolean).join(" · ")
+    const sub = [detail(a), t("remain_enter", remain)].filter(Boolean).join(" · ")
     return {
       Id: rowId(a),
       // 账号行 1000 起、按添加序递减：保证账号整体排在功能行之前、账号间保持添加顺序

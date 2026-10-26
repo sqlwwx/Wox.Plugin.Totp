@@ -27,6 +27,7 @@ function makeApi(state) {
       return { Success: true }
     },
     OnSettingChanged: async (_ctx, _cb) => {},
+    HideApp: async () => { api.hidden = (api.hidden || 0) + 1 },
     Log: async (_ctx, level, msg) => api.logs.push(`${level}: ${msg}`),
     Notify: async (_ctx, msg) => api.notifies.push(msg),
     Copy: async (_ctx, p) => api.copies.push(p.text),
@@ -68,6 +69,10 @@ beforeEach(async () => {
   }
   api = makeApi(state)
   ctx = {}
+  // 直接输入走插件侧 typetext（不是 Wox API），测试替换实现避免真往桌面敲键盘
+  const { setTypeTextImpl } = await import("../src/typetext.mjs")
+  api.typed = []
+  setTypeTextImpl(async (text) => api.typed.push(text))
   // PluginDirectory 指向仓库根：initI18n 从那里读 plugin.json 的 I18n 字典
   await plugin.init(ctx, { API: api, PluginDirectory: path.resolve(import.meta.dir, "..") })
   // store 是模块级单例（与 index.mjs 共享同一 import），init 已跑过 initStore，这里解锁
@@ -243,23 +248,52 @@ describe("alias", () => {
 
 // ---------- 复制 ----------
 describe("copy actions", () => {
-  test("默认 action 复制当前码", async () => {
+  test("copy action 复制当前码", async () => {
     await query(`add ${URI()}`)
     const res = await query("")
     const row = res.Results.find((r) => r.Id?.startsWith("totp:"))
-    await defaultAction(row).Action(ctx, {})
+    await row.Actions.find((a) => a.Id === row.Id + ":copy").Action(ctx, {})
     expect(api.copies).toHaveLength(1)
     expect(api.copies[0]).toMatch(/^\d{6}$/)
+    expect(api.typed).toHaveLength(0)
   })
 
   test("copy_next 复制下一周期码", async () => {
     await query(`add ${URI()}`)
     const res = await query("")
     const row = res.Results.find((r) => r.Id?.startsWith("totp:"))
-    const next = row.Actions.find((a) => !a.IsDefault)
-    await next.Action(ctx, {})
+    await row.Actions.find((a) => a.Id === row.Id + ":copy_next").Action(ctx, {})
     expect(api.copies).toHaveLength(1)
     expect(api.copies[0]).toMatch(/^\d{6}$/)
+  })
+})
+
+// ---------- 直接输入（type action） ----------
+describe("type action", () => {
+  test("type 是默认动作：回车先 HideApp 再注入，不复制", async () => {
+    await query(`add ${URI()}`)
+    const res = await query("")
+    const row = res.Results.find((r) => r.Id?.startsWith("totp:"))
+    expect(defaultAction(row).Id).toBe(row.Id + ":type")
+    await defaultAction(row).Action(ctx, {})
+    expect(api.hidden).toBe(1)
+    expect(api.typed[0]).toMatch(/^\d{6}$/)
+    expect(api.copies).toHaveLength(0)
+  })
+
+  test("直接输入失败兜底：复制到剪贴板并提示", async () => {
+    const { setTypeTextImpl } = await import("../src/typetext.mjs")
+    setTypeTextImpl(async () => {
+      throw new Error("not authorized to send Apple events")
+    })
+    await query(`add ${URI()}`)
+    const res = await query("")
+    const row = res.Results.find((r) => r.Id?.startsWith("totp:"))
+    const typeAct = row.Actions.find((a) => a.Id === row.Id + ":type")
+    await typeAct.Action(ctx, {})
+    expect(api.copies).toHaveLength(1)
+    expect(api.copies[0]).toMatch(/^\d{6}$/)
+    expect(api.notifies.join("\n")).toMatch(/已复制|copied/)
   })
 })
 

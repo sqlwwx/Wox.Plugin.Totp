@@ -7,6 +7,7 @@
 import { t, tErr } from "./i18n.mjs"
 import { getApi } from "./context.mjs"
 import { unlock, changePassword, updateAccounts, needsSetup } from "./store.mjs"
+import { typeText } from "./typetext.mjs"
 import { totp } from "./totp.mjs"
 import { ICON_EXEC, ICON_DEL, ICON_COPY, result, single, act, display, detail, rowId, confirmKey } from "./ui.mjs"
 
@@ -133,11 +134,28 @@ export function passwordAction() {
 export function buildActions(a, code) {
   const rid = rowId(a)
   const api = getApi()
+  // 直接输入到活动窗口（不碰剪贴板）：先 HideApp 让焦点回到目标窗口，
+  // 再由插件 shell 调平台原生工具注入（官方未公开 TypeText API，见 typetext.mjs）
+  const typeCode = async (actCtx) => {
+    await api.HideApp(actCtx)
+    // 焦点沉降：HideApp 后目标窗口需要一点时间接收焦点
+    await new Promise((r) => setTimeout(r, 150))
+    try {
+      await typeText(code)
+    } catch (e) {
+      // 失败兜底：复制到剪贴板并提示，保证验证码始终可用
+      api.Log(actCtx, "Error", `typeText 失败: ${e.message}`)
+      await api.Copy(actCtx, { type: "text", text: code })
+      await api.Notify(actCtx, `TOTP: ${t("type_failed_copied", e.message)}`)
+    }
+  }
   return [
+    // 回车默认直接输入到活动窗口（不碰剪贴板），复制保留为普通 action
+    act(t("type_code", code), ICON_EXEC, typeCode, { isDefault: true, id: `${rid}:type` }),
     act(t("copy_code", code), ICON_COPY, async (actCtx) => {
       await api.Copy(actCtx, { type: "text", text: code })
       await api.Notify(actCtx, t("copied", display(a)))
-    }, { isDefault: true, id: `${rid}:copy` }),
+    }, { id: `${rid}:copy` }),
     act(t("copy_next"), ICON_EXEC, async (actCtx) => {
       const next = totp(a.secret, 1, a.period, a.digits, a.algo)
       await api.Copy(actCtx, { type: "text", text: next })

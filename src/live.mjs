@@ -90,7 +90,7 @@ async function tickLive() {
     const remain = remainingSeconds(a.period)
     const prev = globalState.lastRendered.get(rowId(a))
     if (prev && prev.code === code && prev.remain === remain) continue
-    const sub = [detail(a), t("remain_copy", remain)].filter(Boolean).join(" · ")
+    const sub = [detail(a), t("remain_enter", remain)].filter(Boolean).join(" · ")
     const update = {
       Id: rowId(a),
       Title: `${display(a)}  ${code}`,
