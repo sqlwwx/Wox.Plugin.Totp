@@ -7,7 +7,7 @@
   "Runtime": "nodejs",
   "Description": "i18n:plugin_description",
   "Icon": "relative:images/icon.svg",
-  "Website": "https://github.com/sqlwwx/wox-totp",
+  "Website": "https://github.com/sqlwwx/Wox.Plugin.Totp",
   "TriggerKeywords": ["totp"],
   "Entry": "index.js",
   "SupportedOS": ["windows", "linux", "darwin"],
